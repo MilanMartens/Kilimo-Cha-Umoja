@@ -1,0 +1,32 @@
+
+services:
+  twilio:
+    build:
+      context: ./API
+      dockerfile: Dockerfile
+    env_file:
+      - .env
+    depends_on:
+      - db
+    networks:
+      - twilio_network
+
+  db:
+    build:
+      context: ./Database
+      dockerfile: Dockerfile
+    env_file:
+      - .env
+    ports:
+      - "3307:3306"
+    volumes:
+      - db_data:/var/lib/mysql
+    networks:
+      - twilio_network
+
+volumes:
+  db_data:
+
+networks:
+  twilio_network:
+    driver: bridge
