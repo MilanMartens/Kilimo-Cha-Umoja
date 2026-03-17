@@ -5,13 +5,17 @@ Also monitors for sudden weather changes and sends alerts when conditions change
 """
 
 import json
+import sys
+from pathlib import Path
 from datetime import datetime, timedelta
 from typing import Optional, Dict, Any, List
-from pathlib import Path
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 import pytz
 import os
+
+# Add API folder to path so we can import modules
+sys.path.insert(0, str(Path(__file__).parent / "API"))
 
 # Load environment variables from .env file if it exists
 env_file = Path(".env")
