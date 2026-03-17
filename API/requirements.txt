@@ -1,9 +1,10 @@
 Flask>=3.0,<4.0
+twilio
+sqlalchemy
+pymysql
+cryptography
 python-dotenv>=1.0,<2.0
 requests>=2.31,<3.0
 twilio>=9.0,<10.0
 deep-translator>=1.11.0
 geopy>=2.4,<3.0
-twilio>=8.0.0
-apscheduler>=3.10.0
-pytz>=2023.3
