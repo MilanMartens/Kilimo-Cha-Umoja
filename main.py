@@ -12,6 +12,10 @@ from urllib.request import urlopen
 
 
 BASE_URL = "https://api.open-meteo.com/v1/forecast"
+DEFAULT_LOCATION_NAME = "Dodoma, Tanzania"
+DEFAULT_LATITUDE = -6.1630
+DEFAULT_LONGITUDE = 35.7516
+DEFAULT_TIMEZONE = "Africa/Dar_es_Salaam"
 
 WEATHER_CODE_MAP = {
 	0: "Clear sky",
@@ -118,6 +122,38 @@ def summarize_hourly(hourly: dict[str, list[Any]], hours: int = 12) -> dict[str,
 	}
 
 
+def summarize_today(weather_data: dict[str, Any]) -> dict[str, Any]:
+	"""Build a detailed summary for today that is useful in an SMS context."""
+	current = weather_data.get("current", {})
+	daily = weather_data.get("daily", {})
+	hourly_summary = summarize_hourly(weather_data.get("hourly", {}), hours=12)
+
+	weather_code = (daily.get("weather_code") or [None])[0]
+	today_precipitation = (daily.get("precipitation_sum") or [None])[0]
+	sunrise = (daily.get("sunrise") or [None])[0]
+	sunset = (daily.get("sunset") or [None])[0]
+	today_max = (daily.get("temperature_2m_max") or [None])[0]
+	today_min = (daily.get("temperature_2m_min") or [None])[0]
+
+	return {
+		"date": (daily.get("time") or [None])[0],
+		"current_temperature": current.get("temperature_2m"),
+		"apparent_temperature": current.get("apparent_temperature"),
+		"humidity": current.get("relative_humidity_2m"),
+		"current_condition": WEATHER_CODE_MAP.get(current.get("weather_code"), "Unknown"),
+		"today_condition": WEATHER_CODE_MAP.get(weather_code, "Unknown"),
+		"temperature_min": today_min,
+		"temperature_max": today_max,
+		"wind_speed": current.get("wind_speed_10m"),
+		"precipitation_today": today_precipitation,
+		"rain_risk_next_12h": hourly_summary.get("max_rain_probability"),
+		"wind_peak_next_12h": hourly_summary.get("max_wind_speed"),
+		"likely_weather_next_12h": hourly_summary.get("dominant_weather"),
+		"sunrise": sunrise,
+		"sunset": sunset,
+	}
+
+
 def summarize_daily_window(daily: dict[str, list[Any]], days: int) -> dict[str, Any]:
 	"""Summarize the next N days from the daily forecast block."""
 	times = daily.get("time", [])[:days]
@@ -154,16 +190,15 @@ def build_sms_message(weather_data: dict[str, Any], days: int) -> str:
 	current = weather_data.get("current", {})
 	daily = weather_data.get("daily", {})
 	window = summarize_daily_window(daily, days)
-
-	today_max = (daily.get("temperature_2m_max") or [None])[0]
-	today_min = (daily.get("temperature_2m_min") or [None])[0]
+	today = summarize_today(weather_data)
 
 	condition = WEATHER_CODE_MAP.get(current.get("weather_code"), "Unknown")
 
 	lines = [
 		f"Weather update {datetime.now().strftime('%Y-%m-%d %H:%M')}",
 		f"Now: {current.get('temperature_2m', '?')}C, {condition}, wind {current.get('wind_speed_10m', '?')} km/h",
-		f"Today: {today_min}C to {today_max}C",
+		f"Today: {today.get('temperature_min')}C to {today.get('temperature_max')}C, humidity {today.get('humidity')}%, rain {today.get('precipitation_today')} mm",
+		f"Next 12h: rain risk {today.get('rain_risk_next_12h')}%, wind up to {today.get('wind_peak_next_12h')} km/h, {today.get('likely_weather_next_12h')}",
 		f"Next {window.get('days_considered', 0)}d: {window.get('temp_min')}C to {window.get('temp_max')}C, {window.get('dominant_weather')}, rain {window.get('total_precipitation')} mm",
 	]
 	return " | ".join(lines)
@@ -192,6 +227,7 @@ def prepare_sms_payload(latitude: float, longitude: float, timezone: str = "auto
 			"timezone": weather_data.get("timezone"),
 		},
 		"current": weather_data.get("current", {}),
+		"today": summarize_today(weather_data),
 		"hourly_summary_next_12h": summarize_hourly(weather_data.get("hourly", {}), hours=12),
 		"daily_summary_next_3d": summarize_daily_window(weather_data.get("daily", {}), days=3),
 		"daily_summary_next_7d": summarize_daily_window(weather_data.get("daily", {}), days=7),
@@ -227,9 +263,13 @@ def parse_args() -> argparse.Namespace:
 	parser = argparse.ArgumentParser(
 		description="Fetch Open-Meteo weather data and prepare SMS-ready payload"
 	)
-	parser.add_argument("--lat", type=float, default=51.2194, help="Latitude")
-	parser.add_argument("--lon", type=float, default=4.4025, help="Longitude")
-	parser.add_argument("--timezone", default="auto", help="Timezone value accepted by Open-Meteo")
+	parser.add_argument("--lat", type=float, default=DEFAULT_LATITUDE, help="Latitude")
+	parser.add_argument("--lon", type=float, default=DEFAULT_LONGITUDE, help="Longitude")
+	parser.add_argument(
+		"--timezone",
+		default=DEFAULT_TIMEZONE,
+		help="Timezone value accepted by Open-Meteo",
+	)
 	parser.add_argument(
 		"--output",
 		default="weather_sms_payload.json",
@@ -241,6 +281,7 @@ def parse_args() -> argparse.Namespace:
 def main() -> None:
 	args = parse_args()
 	payload = prepare_sms_payload(latitude=args.lat, longitude=args.lon, timezone=args.timezone)
+	payload["meta"]["location_name"] = DEFAULT_LOCATION_NAME
 	output_path = Path(args.output)
 	output_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
 	print(f"Saved weather payload to {output_path.resolve()}")
