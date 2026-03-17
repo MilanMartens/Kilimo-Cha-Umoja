@@ -557,12 +557,8 @@ def clean_env(name):
 
 @app.route("/run-daily-job", methods=["POST"])
 def run_daily_job():
-
 	# --- Load .env file ---
 	load_dotenv()
-
-
-
 	# --- Twilio setup variables ---
 	ACCOUNT_SID = clean_env("TWILIO_ACCOUNT_SID")
 	AUTH_TOKEN = clean_env("TWILIO_AUTH_TOKEN")
@@ -587,10 +583,6 @@ def run_daily_job():
 	print("Account SID loaded:", ACCOUNT_SID is not None)
 	# make client
 	client = Client(ACCOUNT_SID, AUTH_TOKEN)
-
-
-
-
 	weather = get_weather()
 	sms_text = format_message(weather)
 	print("Sending:", sms_text)
