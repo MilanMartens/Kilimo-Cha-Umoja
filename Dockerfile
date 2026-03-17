@@ -30,7 +30,6 @@ EXPOSE 5001
 EXPOSE 5002
 
 # Run your script
-CMD ["python", "WeatherAPI.py", "--serve";"python","Message.py"]
 COPY start.sh /app/start.sh
 RUN chmod +x /app/start.sh
 CMD ["/app/start.sh"]
