@@ -269,30 +269,32 @@ class DailyWeatherBroadcaster:
 					latitude=lat,
 					longitude=lon,
 					location_name=location,
-					translate=True  # Always in Swahili
+					translate=True  # Translation happens here
 				)
 				
-				# For Trial accounts, use condensed message to fit in single SMS segment
-				# Twilio Trial limit: 70 chars for Unicode text (Swahili)
+				# Get the translated weather message in Swahili
 				weather_msg = payload["sms"]["next_7_days"]["message"]
 				
-				# Create a SHORT version for Trial accounts
-				# Extract just the first line or summary
-				first_line = weather_msg.split('\n')[0] if weather_msg else "Habari ya hali ya hewa"
+				# For Trial accounts: send a longer but still single-segment message
+				# Twilio Trial limit: ~160 characters for standard text, ~70 for Unicode
+				# The message is already in Swahili, so use it as-is but truncate if needed
 				
-				# Build condensed SMS message for Trial account compatibility
-				broadcast_msg = f"{location}: {first_line}"
+				broadcast_msg = weather_msg
 				
-				# If it's too long, further truncate
-				if len(broadcast_msg) > 140:
-					location_short = location[:10]
-					broadcast_msg = f"{location_short}: Angalia ukadri wa hali ya hewa"
+				# If message is too long for Trial (>160 chars), trim it
+				if len(broadcast_msg) > 160:
+					# Take first complete sentence or first ~150 chars
+					broadcast_msg = broadcast_msg[:150]
+					# Try to find last space to avoid cutting mid-word
+					last_space = broadcast_msg.rfind(' ')
+					if last_space > 100:
+						broadcast_msg = broadcast_msg[:last_space] + "..."
 				
 				# Send the broadcast SMS
 				sent = self.send_sms(phone, broadcast_msg)
 				if sent:
 					results["broadcast_sent"] += 1
-					print(f"[OK] {phone} ({location}) - Message length: {len(broadcast_msg)} chars")
+					print(f"[OK] {phone} ({location}) - Message: {len(broadcast_msg)} chars")
 				else:
 					print(f"[FAILED] {phone} ({location}) - SMS send failed")
 				
