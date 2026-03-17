@@ -34,3 +34,4 @@ EXPOSE 5002
 COPY ./start.sh /app
 RUN dos2unix /app/start.sh && chmod +x /app/start.sh
 CMD ["/app/start.sh"]
+
