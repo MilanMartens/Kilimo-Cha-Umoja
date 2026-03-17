@@ -10,7 +10,7 @@ from typing import Any
 from urllib.parse import urlencode
 from urllib.request import urlopen
 from flask import Flask, jsonify, request
-
+from geopy.geocoders import Nominatim
 from translator import translate_to_swahili
 
 
@@ -21,7 +21,9 @@ DEFAULT_LONGITUDE = 35.7516
 DEFAULT_TIMEZONE = "Africa/Dar_es_Salaam"
 DEFAULT_OUTPUT_FILE = "weather_sms_payload.json"
 DEFAULT_HOST = "0.0.0.0"
-DEFAULT_PORT = 5001
+DEFAULT_PORT = 8080
+
+geolocator = Nominatim(user_agent="my_geocoder_app")
 
 TANZANIA_BBOX = {
 	"min_lat": -11.7613,
@@ -486,17 +488,22 @@ def prepare_tanzania_payload(timezone: str = DEFAULT_TIMEZONE, translate: bool =
 @app.get("/")
 def home() -> Any:
 	"""Return a small API description."""
-	return jsonify(
-		{
-			"service": "Open-Meteo SMS Weather API",
-			"endpoints": {
-				"GET /weather?lat=<lat>&lon=<lon>": "Get weather payload for one point.",
-				"GET /weather": "Get Tanzania-wide area payload when no coordinates are provided.",
-				"GET /weather/tanzania": "Get Tanzania-wide area payload.",
-				"GET /weather/bounding-box?lat1=<>&lon1=<>&lat2=<>&lon2=<>&lat3=<>&lon3=<>": "Send 3 coordinate pairs and receive an aggregated area payload.",
-			},
-		}
-	)
+	return jsonify({
+    "service": "Open-Meteo SMS Weather API",
+    "description": "Provides weather data via SMS or API endpoints, supporting point queries, area queries, and bounding box aggregation.",
+    "endpoints": {
+        "GET /weather?lat=<lat>&lon=<lon>": "Retrieve the weather for a specific location by latitude and longitude.",
+        "GET /weather": "Retrieve weather data for the entire Tanzania region when no coordinates are provided.",
+        "GET /weather/tanzania": "Retrieve weather data for the entire Tanzania region explicitly.",
+        "GET /weather/bounding-box?lat1=<>&lon1=<>&lat2=<>&lon2=<>&lat3=<>&lon3=<>": "Send three coordinate pairs to receive an aggregated weather payload for the defined area."
+    },
+    "geocode_endpoint": "/geocode",
+    "geocode_usage": {
+        "forward": "/geocode?location=Antwerp,Belgium",
+        "reverse": "/geocode?lat=51.2194&lon=4.4025"
+    }
+})
+	
 
 
 @app.get("/weather")
@@ -551,6 +558,56 @@ def get_bounding_box_weather() -> Any:
 		translate=translate,
 	)
 	return jsonify(payload)
+
+
+@app.route("/geocode", methods=["GET"])
+def geocode_endpoint() -> tuple:
+    location_query = request.args.get("location", type=str)
+    lat = request.args.get("lat", type=float)
+    lon = request.args.get("lon", type=float)
+
+    if location_query:
+        result = geolocator.geocode(location_query)
+        if not result:
+            return jsonify({"error": f"No result found for '{location_query}'"}), 404
+        return (
+            jsonify(
+                {
+                    "type": "forward",
+                    "query": location_query,
+                    "address": result.address,
+                    "latitude": result.latitude,
+                    "longitude": result.longitude,
+                }
+            ),
+            200,
+        )
+
+    if lat is not None and lon is not None:
+        result = geolocator.reverse((lat, lon))
+        if not result:
+            return jsonify({"error": f"No result found for coordinates ({lat}, {lon})"}), 404
+        return (
+            jsonify(
+                {
+                    "type": "reverse",
+                    "query": {"lat": lat, "lon": lon},
+                    "address": result.address,
+                    "latitude": result.latitude,
+                    "longitude": result.longitude,
+                }
+            ),
+            200,
+        )
+
+    return (
+        jsonify(
+            {
+                "error": "Provide either 'location' or both 'lat' and 'lon' query parameters."
+            }
+        ),
+        400,
+    )
 
 
 def parse_args() -> argparse.Namespace:
