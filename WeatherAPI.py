@@ -553,6 +553,36 @@ def get_bounding_box_weather() -> Any:
 	return jsonify(payload)
 
 
+@app.post("/sms_webhook")
+def sms_webhook() -> Any:
+	"""Webhook endpoint for receiving incoming SMS from Twilio.
+	
+	Expected POST parameters:
+	- From: Incoming phone number (Twilio)
+	- Body: SMS message text
+	
+	Returns: Twilio-compatible XML response with reply message
+	"""
+	from twilio.twiml.messaging_response import MessagingResponse
+	import sms_handler
+	
+	phone_number = request.form.get("From", "")
+	message_body = request.form.get("Body", "").strip()
+	
+	if not phone_number or not message_body:
+		resp = MessagingResponse()
+		resp.message("Karibu! Tuma eneo lako ili upokee taarifa za hali ya hewa.")
+		return str(resp)
+	
+	# Process the incoming SMS
+	response_text = sms_handler.handle_incoming_sms(phone_number, message_body)
+	
+	# Format as Twilio response
+	resp = MessagingResponse()
+	resp.message(response_text)
+	return str(resp)
+
+
 def parse_args() -> argparse.Namespace:
 	parser = argparse.ArgumentParser(
 		description="Fetch Open-Meteo weather data and prepare SMS-ready payload"
