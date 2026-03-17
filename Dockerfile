@@ -1,22 +1,27 @@
-# Use the official Twilio CLI image as base
-FROM twilio/twilio-cli:latest
+# docker build -t my-twilio-cli .
+# docker run -p 5001:5001 --env-file .env my-twilio-cli 
 
-# Set environment variables for Twilio credentials
-# These should be passed at runtime via --env or docker-compose
+# Start from Python
+FROM python:3.12-slim
+
+# Install Twilio CLI
+RUN pip install twilio
+
+# Set working directory
+WORKDIR /app
+
+# Copy your script
+COPY ./WeatherAPI.py /app
+COPY ./requirements.txt /app
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Set environment variables (optional, can also pass at runtime)
 ENV TWILIO_ACCOUNT_SID=${TWILIO_ACCOUNT_SID}
 ENV TWILIO_AUTH_TOKEN=${TWILIO_AUTH_TOKEN}
 ENV TWILIO_API_KEY=${TWILIO_API_KEY}
 ENV TWILIO_API_SECRET=${TWILIO_API_SECRET}
 
-# Set working directory
-WORKDIR /app
+EXPOSE 5001
 
-# Copy any local scripts or config files if needed
-# COPY ./scripts /app/scripts
-
-# Optional: pre-install Twilio CLI plugins
-# RUN twilio plugins:install @twilio-labs/plugin-serverless
-# RUN twilio plugins:install @twilio-labs/plugin-flex
-
-# Default command to verify the Twilio CLI installation
-CMD ["twilio", "--version"]
+# Run your script
+CMD ["python", "WeatherAPI.py", "--serve"]
