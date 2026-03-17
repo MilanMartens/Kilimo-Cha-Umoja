@@ -11,6 +11,8 @@ from urllib.parse import urlencode
 from urllib.request import urlopen
 from flask import Flask, jsonify, request
 
+from translator import translate_to_swahili
+
 
 BASE_URL = "https://api.open-meteo.com/v1/forecast"
 DEFAULT_LOCATION_NAME = "Dodoma, Tanzania"
@@ -280,7 +282,7 @@ def summarize_daily_window(daily: dict[str, list[Any]], days: int) -> dict[str, 
 	}
 
 
-def build_sms_message(weather_data: dict[str, Any], days: int) -> str:
+def build_sms_message(weather_data: dict[str, Any], days: int, translate: bool = False) -> str:
 	"""Create a concise text message for an N-day forecast window."""
 	current = weather_data.get("current", {})
 	daily = weather_data.get("daily", {})
@@ -296,10 +298,15 @@ def build_sms_message(weather_data: dict[str, Any], days: int) -> str:
 		f"Next 12h: rain risk {today.get('rain_risk_next_12h')}%, wind up to {today.get('wind_peak_next_12h')} km/h, {today.get('likely_weather_next_12h')}",
 		f"Next {window.get('days_considered', 0)}d: {window.get('temp_min')}C to {window.get('temp_max')}C, {window.get('dominant_weather')}, rain {window.get('total_precipitation')} mm",
 	]
-	return " | ".join(lines)
+	message = " | ".join(lines)
+	
+	if translate:
+		message = translate_to_swahili(message)
+	
+	return message
 
 
-def build_area_sms_message(summary: dict[str, Any]) -> str:
+def build_area_sms_message(summary: dict[str, Any], translate: bool = False) -> str:
 	"""Create a concise area-based SMS message from aggregated weather summaries."""
 	today = summary.get("today", {})
 	next_3_days = summary.get("next_3_days", {})
@@ -310,7 +317,12 @@ def build_area_sms_message(summary: dict[str, Any]) -> str:
 		f"Next 3d: {next_3_days.get('temp_min')}C to {next_3_days.get('temp_max')}C, {next_3_days.get('dominant_weather')}, rain up to {next_3_days.get('max_total_precipitation')} mm",
 		f"Next 7d: {next_7_days.get('temp_min')}C to {next_7_days.get('temp_max')}C, {next_7_days.get('dominant_weather')}, rain up to {next_7_days.get('max_total_precipitation')} mm",
 	]
-	return " | ".join(lines)
+	message = " | ".join(lines)
+	
+	if translate:
+		message = translate_to_swahili(message)
+	
+	return message
 
 
 def split_sms(text: str, segment_size: int = 160) -> list[str]:
@@ -323,6 +335,7 @@ def prepare_sms_payload(
 	longitude: float,
 	timezone: str = "auto",
 	location_name: str | None = None,
+	translate: bool = False,
 ) -> dict[str, Any]:
 	"""Collect weather information and package it for downstream SMS sending."""
 	weather_data = fetch_weather(
@@ -358,8 +371,8 @@ def prepare_sms_payload(
 		},
 	}
 
-	sms_text_3d = build_sms_message(weather_data, days=3)
-	sms_text_7d = build_sms_message(weather_data, days=7)
+	sms_text_3d = build_sms_message(weather_data, days=3, translate=translate)
+	sms_text_7d = build_sms_message(weather_data, days=7, translate=translate)
 	payload["sms"] = {
 		"next_3_days": {
 			"message": sms_text_3d,
@@ -379,6 +392,7 @@ def aggregate_area_payload(
 	bbox: dict[str, float],
 	timezone: str = DEFAULT_TIMEZONE,
 	input_points: list[dict[str, float]] | None = None,
+	translate: bool = False,
 ) -> dict[str, Any]:
 	"""Build an aggregated weather payload for a bounding box area."""
 	sample_points = sample_bbox_points(bbox)
@@ -388,6 +402,7 @@ def aggregate_area_payload(
 			longitude=float(point["lon"]),
 			timezone=timezone,
 			location_name=f"sample_{point['name']}",
+			translate=translate,
 		)
 		for point in sample_points
 	]
@@ -428,7 +443,7 @@ def aggregate_area_payload(
 		},
 	}
 
-	sms_text = build_area_sms_message(area_summary)
+	sms_text = build_area_sms_message(area_summary, translate=translate)
 	return {
 		"meta": {
 			"source": "open-meteo",
@@ -459,11 +474,12 @@ def aggregate_area_payload(
 	}
 
 
-def prepare_tanzania_payload(timezone: str = DEFAULT_TIMEZONE) -> dict[str, Any]:
+def prepare_tanzania_payload(timezone: str = DEFAULT_TIMEZONE, translate: bool = False) -> dict[str, Any]:
 	"""Build an aggregated payload for the whole of Tanzania."""
 	return aggregate_area_payload(
 		bbox=TANZANIA_BBOX,
 		timezone=timezone,
+		translate=translate,
 	)
 
 
@@ -490,9 +506,10 @@ def get_weather() -> Any:
 	lon = request.args.get("lon", type=float)
 	timezone = request.args.get("timezone", default=DEFAULT_TIMEZONE, type=str)
 	location_name = request.args.get("location_name", type=str)
+	translate = request.args.get("translate", default="false", type=str).lower() == "true"
 
 	if lat is None and lon is None:
-		return jsonify(prepare_tanzania_payload(timezone=timezone))
+		return jsonify(prepare_tanzania_payload(timezone=timezone, translate=translate))
 
 	if lat is None or lon is None:
 		return jsonify({"error": "Provide both lat and lon, or neither."}), 400
@@ -502,6 +519,7 @@ def get_weather() -> Any:
 		longitude=lon,
 		timezone=timezone,
 		location_name=location_name,
+		translate=translate,
 	)
 	return jsonify(payload)
 
@@ -510,13 +528,15 @@ def get_weather() -> Any:
 def get_tanzania_weather() -> Any:
 	"""Return the aggregated Tanzania-wide payload."""
 	timezone = request.args.get("timezone", default=DEFAULT_TIMEZONE, type=str)
-	return jsonify(prepare_tanzania_payload(timezone=timezone))
+	translate = request.args.get("translate", default="false", type=str).lower() == "true"
+	return jsonify(prepare_tanzania_payload(timezone=timezone, translate=translate))
 
 
 @app.get("/weather/bounding-box")
 def get_bounding_box_weather() -> Any:
 	"""Return an aggregated payload for a custom bounding box built from 3 coordinates."""
 	timezone = request.args.get("timezone", default=DEFAULT_TIMEZONE, type=str)
+	translate = request.args.get("translate", default="false", type=str).lower() == "true"
 
 	try:
 		points = parse_query_points(expected_count=3)
@@ -528,6 +548,7 @@ def get_bounding_box_weather() -> Any:
 		bbox=bbox,
 		timezone=timezone,
 		input_points=points,
+		translate=translate,
 	)
 	return jsonify(payload)
 
@@ -555,6 +576,11 @@ def parse_args() -> argparse.Namespace:
 	)
 	parser.add_argument("--host", default=DEFAULT_HOST, help="Host for the Flask API")
 	parser.add_argument("--port", type=int, default=DEFAULT_PORT, help="Port for the Flask API")
+	parser.add_argument(
+		"--translate",
+		action="store_true",
+		help="Translate SMS messages to Swahili using Google Translate API",
+	)
 	return parser.parse_args()
 
 
@@ -569,6 +595,7 @@ def main() -> None:
 		longitude=args.lon,
 		timezone=args.timezone,
 		location_name=DEFAULT_LOCATION_NAME,
+		translate=args.translate,
 	)
 	output_path = Path(args.output)
 	output_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
