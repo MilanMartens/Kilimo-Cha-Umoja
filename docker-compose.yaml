@@ -10,6 +10,9 @@ services:
       - db
     networks:
       - twilio_network
+    ports:
+      - "5001:5001"
+      - "5002:5002"
 
   db:
     build:
