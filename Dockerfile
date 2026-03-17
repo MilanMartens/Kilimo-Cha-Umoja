@@ -11,7 +11,7 @@ RUN pip install twilio
 WORKDIR /app
 
 # Copy your script
-COPY ./main.py /app
+COPY ./WeatherAPI.py /app
 COPY ./requirements.txt /app
 RUN pip install --no-cache-dir -r requirements.txt
 
@@ -24,4 +24,4 @@ ENV TWILIO_API_SECRET=${TWILIO_API_SECRET}
 EXPOSE 5001
 
 # Run your script
-CMD ["python", "main.py", "--serve"]
+CMD ["python", "WeatherAPI.py", "--serve"]
