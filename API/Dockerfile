@@ -12,9 +12,8 @@ RUN apt-get update && apt-get install -y dos2unix && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 
 # Copy your script
-COPY ./WeatherAPI.py /app
+COPY ./main.py /app
 COPY ./Message.py /app
-COPY ./LocationAPI.py /app
 COPY ./translator.py /app
 COPY ./requirements.txt /app
 RUN pip install --no-cache-dir -r requirements.txt
@@ -27,11 +26,10 @@ ENV TO_NUMBER =${to_number}
 ENV TWILIO_API_KEY=${TWILIO_API_KEY}
 ENV TWILIO_API_SECRET=${TWILIO_API_SECRET}
 
-EXPOSE 5001
-EXPOSE 5002
+EXPOSE 8080
 
 # Run your script
 COPY ./start.sh /app
 RUN dos2unix /app/start.sh && chmod +x /app/start.sh
-CMD ["/app/start.sh"]
+CMD ["python ./main.py --serve"]
 
